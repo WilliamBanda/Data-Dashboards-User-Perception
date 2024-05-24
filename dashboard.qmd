@@ -1,0 +1,627 @@
+---
+title: "Dairy Production"
+format: 
+  dashboard:
+    nav-buttons: [github]
+    github: https://github.com/WilliamBanda/Data-Dashboards-User-Perception
+theme: [sandstone, theme/custom.scss]
+fig-width: 4
+fig-asp: 0.6
+params:
+  month: 
+  year: 
+  threshold_diff: 0.02
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| label: load-packages
+#| message: false
+#| warning: false
+#| include: false
+
+options(repos = "https://cran.rstudio.com")
+
+# Suppress messages and warnings globally
+suppressPackageStartupMessages({
+  install.packages("reshape2", quiet = TRUE)
+  install.packages(c("writexl", "shiny", "ggplot2"), quiet = TRUE)
+  
+  library(tidyverse)
+  library(readr)
+  library(dplyr)
+  library(openxlsx)
+  library(ggplot2)
+  library(shiny)
+  library(writexl)
+  library(plotly)
+  library(reshape2)
+  library(readxl)
+  library(scales)
+  library(DT)
+  library(gt)
+})
+
+# Set a theme
+theme_set(theme_minimal(base_size = 24, base_family = "Atkinson Hyperlegible"))
+```
+
+```{r}
+#| label: load-data
+#| message: false
+
+Data <- read_excel("C:/Users/WilliamBanda1/Documents/MRP/tidy_data.xlsx")
+```
+
+```{r}
+#| label: set-inputs
+
+time_period <- paste(params$month, params$year)
+```
+
+```{r}
+#| label: prep-data
+```
+
+#  {.sidebar}
+
+This dashboard displays statistics for:
+
+|              |                     |
+|--------------|---------------------|
+| **FARM**     | Harper Future Farm  |
+| **Unit**     | Dairy               |
+| **Year**    | `{r} time_period`   |
+
+------------------------------------------------------------------------
+
+`{r} time_period` Period:
+
+|                          |            |
+|--------------------------|------------|
+| **Years**                |  2018-2023 |
+
+------------------------------------------------------------------------
+
+::: {.callout-note collapse="true"}
+## Disclaimer
+
+The data used in this code is a property of harper adams future farms, for any clarifications please contact Harper Adams Future Farms.
+:::
+
+# All
+
+```{r}
+#| label: all-values
+#| results: hide
+
+# Filter data for the years 2018-2023
+Data_filtered <- Data %>%
+  filter(format(as.Date(date), "%Y") %in% 2018:2023)
+
+# Calculate average milk produced from 2018-2023
+avg_milk_produced <- Data_filtered %>%
+  summarize(avg_milk_produced = mean(milk_produced, na.rm = TRUE)) %>%
+  pull(avg_milk_produced)
+
+# Calculate average milk per cow from 2018-2023
+avg_milk_per_cow <- Data_filtered %>%
+  summarize(avg_milk_per_cow = mean(milk_per_cow, na.rm = TRUE)) %>%
+  pull(avg_milk_per_cow)
+
+# Calculate average protein % from 2018-2023
+avg_protein <- Data_filtered %>%
+  summarize(avg_protein = mean(protein, na.rm = TRUE)) %>%
+  pull(avg_protein)
+```
+
+## Row {height="20%"}
+
+```{r}
+#| content: valuebox
+#| title: "Total Milk Produced (KG)"
+
+list(
+  icon = "file-medical",
+  color = "green",
+  value = avg_milk_produced
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Average Milk per Day (Kg)"
+
+list(
+  icon = "clipboard2-pulse",
+  color = "blue",
+  value = avg_milk_per_cow
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Milk Quality (Protein %)"
+
+list(
+  icon = "calendar-week",
+  color = "cyan",
+  value = avg_protein
+)
+```
+
+## Row {height="40%"}
+
+### Column {width="40%"}
+
+```{r}
+#| title: Yearly Averages for Number of Cows in Tank
+
+# Calculate yearly averages for cows_in_tank
+yearlyData <- Data %>%
+  mutate(year = format(as.Date(date), "%Y")) %>%
+  group_by(year) %>%
+  summarize(avg_cows_in_tank = mean(cows_in_tank, na.rm = TRUE))
+
+# Create a bar plot for the yearly averages of cows_in_tank using ggplot
+p <- ggplot(yearlyData, aes(x = year, y = avg_cows_in_tank)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Year", y = "Average Number of Cows in Tank") +
+  theme_minimal()
+
+# Convert the ggplot to a plotly object
+fig <- ggplotly(p)
+
+# Print the interactive Plotly graph
+fig
+```
+
+### Column {width="60%"}
+
+```{r}
+#| title: "Sum Total of Milk Produced per Year (2018-2023)"
+
+# Ensure the 'date' column is in Date format
+Data$date <- as.Date(Data$date)
+
+# Extract year from date
+Data$year <- year(Data$date)
+
+# Aggregate data to calculate yearly total milk produced
+yearly_data <- Data %>%
+  filter(year >= 2018 & year <= 2023) %>%
+  group_by(year) %>%
+  summarise(total_milk_produced = sum(milk_produced, na.rm = TRUE))
+
+# Create the bar plot with ggplot2
+p <- ggplot(yearly_data, aes(x = factor(year), y = total_milk_produced, fill = factor(year))) +
+  geom_bar(stat = "identity") +
+  labs(x = "Year", y = "Total Milk Produced (KGs)") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::comma) +
+  guides(fill = FALSE)  # Remove legend
+
+# Convert the ggplot to an interactive plotly plot
+interactive_plot <- ggplotly(p)
+
+# Display the interactive plot
+interactive_plot
+
+```
+
+## Row {height="40%"}
+
+```{r}
+#| title: Daily Average Milk per Cow per Year
+
+# Extract year from date
+Data$year <- year(Data$date)
+
+# Aggregate data to calculate yearly total or average
+yearly_data <- Data %>%
+  group_by(year) %>%
+  summarise(milk_per_cow = mean(milk_per_cow, na.rm = TRUE))  # Use sum() if you want total instead of mean
+
+# Create the bar plot with ggplot2
+p <- ggplot(yearly_data, aes(x = factor(year), y = milk_per_cow, fill = factor(year))) +
+  geom_bar(stat = "identity") +
+  labs(x = "Year", y = "Av/Milk/Cow (KGs)") +
+  theme_minimal() +
+  guides(fill = FALSE)  # Remove legend
+
+# Print the ggplot object to check
+print(p)
+```
+
+```{r}
+#| title: Yearly Average Comparison of Fat and Protein Percentages
+
+ # Extract year from date
+Data$year <- year(Data$date)
+
+# Aggregate data to calculate yearly averages
+yearly_data <- Data %>%
+  group_by(year) %>%
+  summarise(protein = mean(protein, na.rm = TRUE),
+            fat = mean(fat, na.rm = TRUE))
+
+# Reshape data for visualization
+tidy_yearly_data <- yearly_data %>%
+  pivot_longer(cols = c(protein, fat), names_to = "variable", values_to = "value")
+
+# Create the line plot with ggplot2
+p <- ggplot(tidy_yearly_data, aes(x = factor(year), y = value, color = variable, group = variable)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  labs(x = "Year", y = "Average Percentage (%)", color = "Nutrient") +
+  scale_color_manual(values = c("protein" = "steelblue", "fat" = "coral")) +  # Custom colors
+  theme_minimal()
+
+# Convert ggplot to plotly object
+fig <- ggplotly(p)
+
+# Display the interactive plotly line plot
+fig
+```
+
+# Production {orientation="columns"}
+
+## Column {width="60%"}
+
+```{r}
+#| label: Production-values
+#| results: hide
+
+# Convert date column to Date type if necessary
+Data$date <- as.Date(Data$date)
+
+# Filter data for the years 2018-2023
+Data_filtered <- Data %>%
+  filter(format(as.Date(date), "%Y") %in% 2018:2023)
+
+# Calculate average cows_in_milk from 2018-2023 
+avg_cows_in_milk <- Data_filtered %>%
+  summarize(avg_cows_in_milk = round(mean(cows_in_milk, na.rm = TRUE))) %>%
+  pull(avg_cows_in_milk)
+
+# Calculate average cows_in_tank from 2018-2023 
+avg_cows_in_tank <- Data_filtered %>%
+  summarize(avg_cows_in_tank = round(mean(cows_in_tank, na.rm = TRUE))) %>%
+  pull(avg_cows_in_tank)
+
+
+```
+
+### Row {height="20%"}
+
+```{r}
+#| component: valuebox
+#| title: "Cows in Milk Av.(2018-2023)"
+
+list( color = "primary",
+  value = avg_cows_in_milk
+)
+```
+
+```{r}
+#| component: valuebox
+#| title: "Cows in Tank Av.(2018-2023)"
+
+list(color = "primary",
+  value = avg_cows_in_tank
+)
+```
+
+### Row {height="40%"}
+
+```{r}
+#| title: Comparison of Dairy Cow by Class per Year
+
+# Reshape the data to long format
+long_data <- Data %>%
+  pivot_longer(cols = c(straw_yard, highs, trial1, trial2, low), 
+               names_to = "variable", 
+               values_to = "value")
+
+# Create the bar plot with ggplot2
+p <- ggplot(long_data, aes(x = factor(year), y = value, fill = variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Year", y = "Average Milk/Cow/Day (KGs)				
+", fill = "Class") +
+  theme_minimal()
+
+# Convert the ggplot to an interactive plotly plot
+interactive_plot <- ggplotly(p)
+
+# Display the interactive plot
+interactive_plot
+
+```
+
+### Row {height="40%" .tabset}
+
+```{r}
+#| title: Yearly Average Comparison of Trial1 and Trial2
+
+# Extract year from date
+Data$year <- year(Data$date)
+
+# Aggregate data to calculate yearly averages
+yearly_data <- Data %>%
+  group_by(year) %>%
+  summarise(
+    trial1 = mean(trial1, na.rm = TRUE),
+    trial2 = mean(trial2, na.rm = TRUE)
+  )
+
+# Reshape data for visualization
+tidy_yearly_data <- yearly_data %>%
+  pivot_longer(cols = c(trial1, trial2), names_to = "variable", values_to = "value")
+
+# Create the line plot with ggplot2
+p <- ggplot(tidy_yearly_data, aes(x = year, y = value, color = variable, group = variable)) +
+  geom_line() +
+  geom_point() +  # Add points to highlight each year
+  labs(x = "Year", y = "Average Milk/Cow/Day (KGs)				
+", color = "Class") +
+  theme_minimal()
+
+# Convert ggplot to plotly object
+fig <- ggplotly(p)
+
+# Display the interactive plotly line graph
+fig
+```
+
+```{r}
+#| title: Yearly Average Comparison of Highs and Low
+
+# Extract year from date
+Data$year <- year(Data$date)
+
+# Aggregate data to calculate yearly averages
+yearly_data <- Data %>%
+  group_by(year) %>%
+  summarise(
+    highs = mean(highs, na.rm = TRUE),
+    low = mean(low, na.rm = TRUE)
+  )
+
+# Reshape data for visualization
+tidy_yearly_data <- yearly_data %>%
+  pivot_longer(cols = c(highs, low), names_to = "variable", values_to = "value")
+
+# Create the line plot with ggplot2
+p <- ggplot(tidy_yearly_data, aes(x = year, y = value, color = variable, group = variable)) +
+  geom_line() +
+  geom_point() +  # Add points to highlight each year
+  labs(x = "Year", y = "Average Milk/Cow/Day (KGs)				
+", color = "Class") +
+  theme_minimal()
+
+# Convert ggplot to plotly object
+fig <- ggplotly(p)
+
+# Display the interactive plotly line graph
+fig
+```
+
+## Column {width="40%"}
+
+```{r}
+#| title: Data
+
+# Select and arrange the specified columns from Data
+Data_selected <- Data %>%
+  select(date, cows_in_milk, cows_in_tank, milk_produced, milk_per_cow, straw_yard, highs, trial1, trial2) %>%
+  arrange(date)
+
+# Create an interactive table with custom column names and options
+datatable(
+  Data_selected,
+  colnames = c("Date", "Cows in Milk", "Cows in Tank", "Milk Produced", "Milk per Cow", "Straw Yard", "Highs", "Trial 1", "Trial 2"),
+  options = list(
+    dom = "lrtip", 
+    paging = TRUE,
+    lengthMenu = c(5, 10, 25),
+    pageLength = 10, 
+    scrollY = TRUE
+  )
+)
+```
+
+# Milk Quality {orientation="columns"}
+
+## Column {width="60%"}
+
+```{r}
+#| label: Milk Quality-values
+#| results: hide
+
+# Convert date column to Date type if necessary
+Data$date <- as.Date(Data$date)
+
+# Filter data for the years 2018-2023
+Data_filtered <- Data %>%
+  filter(format(as.Date(date), "%Y") %in% 2018:2023)
+
+# Calculate average bs from 2018-2023
+avg_bs <- Data_filtered %>%
+  summarize(avg_bs = mean(bs, na.rm = TRUE)) %>%
+  pull(avg_bs)
+
+# Calculate average fat from 2018-2023
+avg_fat <- Data_filtered %>%
+  summarize(avg_fat = mean(fat, na.rm = TRUE)) %>%
+  pull(avg_fat)
+```
+
+### Row {height="20%"}
+
+```{r}
+#| component: valuebox
+#| title: "Bacterial Score Av.(2018-2023)"
+
+list(color = "primary",
+  value = avg_bs
+)
+```
+
+```{r}
+#| component: valuebox
+#| title: "Fat % Av.(2018-2023)"
+
+list(color = "primary",
+  value = avg_fat
+)
+```
+
+### Row {height="40%"}
+
+```{r}
+#| title: Yearly Average Comparison of HSCC, SCC, BS, Fat, and Protein
+
+# Extract year from date
+Data$year <- year(Data$date)
+
+# Aggregate data to calculate yearly averages
+yearly_data <- Data %>%
+  group_by(year) %>%
+  summarise(
+    hscc = mean(hscc, na.rm = TRUE),
+    scc = mean(scc, na.rm = TRUE),
+    bs = mean(bs, na.rm = TRUE),
+    fat = mean(fat, na.rm = TRUE),
+    protein = mean(protein, na.rm = TRUE)
+  )
+
+# Reshape data for visualization
+tidy_yearly_data <- yearly_data %>%
+  pivot_longer(cols = c(hscc, scc, bs, fat, protein), names_to = "Class", values_to = "value")
+
+# Create the line plot with ggplot2
+p <- ggplot(tidy_yearly_data, aes(x = year, y = value, color = Class, group = Class)) +
+  geom_line() +
+  geom_point() +  # Add points to highlight each year
+  labs(x = "Year", y = "Average Value", color = "Class") +
+  theme_minimal()
+
+
+# Convert ggplot to plotly object
+fig <- ggplotly(p)
+
+# Display the interactive plotly line graph
+fig
+```
+
+### Row {height="40%" .tabset}
+
+```{r}
+#| title: Yearly Average Comparison of HSCC, SCC, and BS
+
+# Extract year from date
+Data$year <- year(Data$date)
+
+# Aggregate data to calculate yearly averages
+yearly_data <- Data %>%
+  group_by(year) %>%
+  summarise(
+    hscc = mean(hscc, na.rm = TRUE),
+    scc = mean(scc, na.rm = TRUE),
+    bs = mean(bs, na.rm = TRUE)
+  )
+
+# Reshape data for visualization
+tidy_yearly_data <- yearly_data %>%
+  pivot_longer(cols = c(hscc, scc, bs), names_to = "variable", values_to = "value")
+
+# Create the line plot with ggplot2
+p <- ggplot(tidy_yearly_data, aes(x = year, y = value, color = variable, group = variable)) +
+  geom_line() +
+  geom_point() +  # Add points to highlight each year
+  labs(x = "Year", y = "'000/ml", color = "Class") +
+  theme_minimal()
+
+# Convert ggplot to plotly object
+fig <- ggplotly(p)
+
+# Display the interactive plotly line graph
+fig
+```
+
+```{r}
+#| title: Yearly Average Comparison of SCC and BS
+
+# Extract year from date
+Data$year <- year(Data$date)
+
+# Aggregate data to calculate yearly averages
+yearly_data <- Data %>%
+  group_by(year) %>%
+  summarise(
+    scc = mean(scc, na.rm = TRUE),
+    bs = mean(bs, na.rm = TRUE)
+  )
+
+# Reshape data for visualization
+tidy_yearly_data <- yearly_data %>%
+  pivot_longer(cols = c(scc, bs), names_to = "variable", values_to = "value")
+
+# Create the bar plot with ggplot2
+p <- ggplot(tidy_yearly_data, aes(x = factor(year), y = value, fill = variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Year", y = "'000/ml", fill = "Variable") +
+  theme_minimal()
+
+# Convert ggplot to plotly object
+fig <- ggplotly(p)
+
+# Display the interactive plotly bar plot
+fig
+```
+
+## Column {width="40%"}
+
+```{r}
+#| title: Data
+# Select and arrange the specified columns from Data
+Data_selected <- Data %>%
+  select(date, hscc, scc, bs, fat, protein) %>%
+  arrange(date)
+
+# Create an interactive table with custom column names and options
+datatable(
+  Data_selected,
+  colnames = c("Date", "Hscc", "Scc", "Bs", "Fat", "Protein"),
+  options = list(
+    dom = "lrtip", 
+    paging = TRUE,
+    lengthMenu = c(5, 10, 25),
+    pageLength = 10, 
+    scrollY = TRUE
+  )
+)
+```
+
+# Data
+
+```{r}
+# Select and arrange the specified columns from Data
+Data_selected <- Data %>%
+  select(date, cows_in_milk, cows_in_tank, milk_produced, milk_per_cow, straw_yard, highs, trial1, trial2, low, hscc, scc, bs, fat, protein) %>%
+  arrange(date)
+
+# Create an interactive table with custom column names and options
+datatable(
+  Data_selected,
+  colnames = c("Date", "Cows in Milk", "Cows in Tank", "Milk Produced", "Milk per Cow", "Straw Yard", "Highs", "Trial 1", "Trial 2", "Low", "Hscc", "Scc", "Bs", "Fat", "Protein"),
+  options = list(
+    dom = "lrtip", 
+    paging = TRUE,
+    lengthMenu = c(5, 10, 25),
+    pageLength = 10, 
+    scrollY = TRUE
+  )
+)
+```
