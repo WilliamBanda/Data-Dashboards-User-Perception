@@ -1,0 +1,251 @@
+---
+title: "Dairy Production"
+author: "William Banda"
+format: 
+  dashboard:
+    embed-resources: true
+theme: 
+  - minty
+  - ../styles/styles.scss
+---
+
+```{r}
+#| label: load-packages
+#| message: false
+#| warning: false
+#| include: false
+
+options(repos = "https://cran.rstudio.com")
+
+# Suppress messages and warnings globally
+suppressPackageStartupMessages({
+  install.packages("reshape2", quiet = TRUE)
+  install.packages(c("writexl", "shiny", "ggplot2"), quiet = TRUE)
+  
+  library(tidyverse)
+  library(readr)
+  library(dplyr)
+  library(openxlsx)
+  library(ggplot2)
+  library(shiny)
+  library(writexl)
+  library(plotly)
+  library(reshape2)
+  library(readxl)
+  library(scales)
+  library(DT)
+  library(gt)
+})
+
+# import data
+#| label: load-data
+#| message: false
+
+Data <- read_excel("C:/Users/WilliamBanda1/Documents/MRP/tidy_data.xlsx")
+
+# Set theme"
+theme_set(theme_minimal())
+```
+
+# {.sidebar}
+
+This is a simple static dashboard to visualize summaries of quantitative metrics for dairy production for the Harper Future Farm Dairy Unit.
+
+In this dashboard we show the Production and Milk Quality Metrics. In the table below is some basic information about the data:
+
+| Feature      |  Count              |
+|--------------|---------------------|
+| **Farm**     |Harper Future Farm   |
+| **Unit**     |Dairy                |
+| **Years**    |2018-2023            |
+
+***
+
+```{r}
+#| label: all-values
+#| results: hide
+
+# Filter data for the years 2018-2023
+Data_filtered <- Data %>%
+  filter(format(as.Date(date), "%Y") %in% 2018:2023)
+
+# Calculate average milk produced from 2018-2023
+avg_milk_produced <- Data_filtered %>%
+  summarize(avg_milk_produced = mean(milk_produced, na.rm = TRUE)) %>%
+  pull(avg_milk_produced)
+
+# Calculate average protein % from 2018-2023
+avg_protein <- Data_filtered %>%
+  summarize(avg_protein = mean(protein, na.rm = TRUE)) %>%
+  pull(avg_protein)
+```
+
+***
+
+::: {.callout-note collapse="true"}
+## Note
+This data is a property of the **Harper Adams Future Farms!**
+:::
+
+# Summaries
+
+## Row {height=30%}
+
+```{r}
+#| content: valuebox
+#| title: "Total Milk Produced (KGs)"
+list(
+  icon = "file-medical",
+  color = "info",
+  value = avg_milk_produced
+)
+```
+
+```{r}
+#| content: valuebox
+#| title: "Milk Quality (Protein %)"
+list(
+  icon = "clipboard2-pulse",
+  color = "success",
+  value = avg_protein
+)
+```
+
+## Row {height=45%}
+
+```{r}
+#| title: A Comparison of Yearly Averages for Number of Cows in Tank and Number of Cows in Milk
+
+# Calculate yearly averages for cows_in_tank and cows_in_milk
+yearlyData <- Data %>%
+  mutate(year = format(as.Date(date), "%Y")) %>%
+  group_by(year) %>%
+  summarize(avg_cows_in_tank = mean(cows_in_tank, na.rm = TRUE),
+            avg_cows_in_milk = mean(cows_in_milk, na.rm = TRUE))
+
+# Reshape the data for plotting
+yearlyData_long <- yearlyData %>%
+  pivot_longer(cols = c(avg_cows_in_tank, avg_cows_in_milk), 
+               names_to = "category", 
+               values_to = "average")
+
+# Create a bar plot for the yearly averages using ggplot
+p <- ggplot(yearlyData_long, aes(x = year, y = average, fill = category)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Year", y = "Average Number of Cows", fill = "Category") +
+  theme_minimal()
+
+# Print the static ggplot
+print(p)
+
+```
+
+### Column {.tabset}
+
+```{r}
+#| title: Yearly Average Comparison of HSCC, SCC, and BS
+
+# Extract year from date
+Data$year <- year(Data$date)
+
+# Aggregate data to calculate yearly averages
+yearly_data <- Data %>%
+  group_by(year) %>%
+  summarise(
+    hscc = mean(hscc, na.rm = TRUE),
+    scc = mean(scc, na.rm = TRUE),
+    bs = mean(bs, na.rm = TRUE)
+  )
+
+# Reshape data for visualization
+tidy_yearly_data <- yearly_data %>%
+  pivot_longer(cols = c(hscc, scc, bs), names_to = "variable", values_to = "value")
+
+# Create the line plot with ggplot2
+p <- ggplot(tidy_yearly_data, aes(x = year, y = value, color = variable, group = variable)) +
+  geom_line() +
+  geom_point() +  # Add points to highlight each year
+  labs(x = "Year", y = "'000/ml", color = "Class") +
+  theme_minimal()
+
+# Print the static ggplot
+print(p)
+```
+
+```{r}
+#| title: Yearly Average Comparison of Fat and Protein Percentages
+
+ # Extract year from date
+Data$year <- year(Data$date)
+
+# Aggregate data to calculate yearly averages
+yearly_data <- Data %>%
+  group_by(year) %>%
+  summarise(protein = mean(protein, na.rm = TRUE),
+            fat = mean(fat, na.rm = TRUE))
+
+# Reshape data for visualization
+tidy_yearly_data <- yearly_data %>%
+  pivot_longer(cols = c(protein, fat), names_to = "variable", values_to = "value")
+
+# Create the line plot with ggplot2
+p <- ggplot(tidy_yearly_data, aes(x = factor(year), y = value, color = variable, group = variable)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  labs(x = "Year", y = "Average Percentage (%)", color = "Nutrient") +
+  scale_color_manual(values = c("protein" = "steelblue", "fat" = "coral")) +  # Custom colors
+  theme_minimal()
+
+# Print the static ggplot
+print(p)
+
+```
+
+## row {height=35%} 
+
+```{r}
+#| title: Comparison of Average Milk per Cow per Day by Class per Year (KGs)
+
+# Reshape the data to long format
+long_data <- Data %>%
+  pivot_longer(cols = c(straw_yard, highs, trial1, trial2, low), 
+               names_to = "variable", 
+               values_to = "value")
+
+# Create the bar plot with ggplot2
+p <- ggplot(long_data, aes(x = factor(year), y = value, fill = variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Year", y = "Average Milk/Cow/Day (KGs)				
+", fill = "Class") +
+  theme_minimal()
+
+# Print the static ggplot
+print(p)
+```
+
+# Data
+```{r}
+# Select and arrange the specified columns from Data
+Data_selected <- Data %>%
+  select(date, cows_in_milk, cows_in_tank, milk_produced, milk_per_cow, straw_yard, highs, trial1, trial2, low, hscc, scc, bs, fat, protein) %>%
+  arrange(date)
+
+# Create an interactive table with custom column names and options
+datatable(
+  Data_selected,
+  colnames = c("Date", "Cows in Milk", "Cows in Tank", "Milk Produced", "Milk per Cow", "Straw Yard", "Highs", "Trial 1", "Trial 2", "Low", "Hscc", "Scc", "Bs", "Fat", "Protein"),
+  options = list(
+    dom = "lrtip", 
+    paging = TRUE,
+    lengthMenu = c(5, 10, 25),
+    pageLength = 10, 
+    scrollY = TRUE
+  )
+)
+```
+
+
+# Source
+The code and data for this dashboard can be obtained here
+
+ <https://github.com/WilliamBanda/Data-Dashboards-User-Perception>
